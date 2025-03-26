@@ -37,9 +37,7 @@ def create_v4_plan(api_id, app_number):
         "definitionVersion": "4.0.0",
         "mode": "STANDARD",
         "status": "PUBLISHED",
-        "security": {
-            "type": "API_KEY"
-        },
+        "security": "API_KEY",  # ✅ fix here
         "flows": [],
         "tags": []
     }
@@ -51,18 +49,25 @@ def create_v4_plan(api_id, app_number):
 
 def create_subscription_v4(api_id, application_id, plan_id):
     data = {
-        "consumer": {
-            "type": "APPLICATION",
-            "id": application_id
-        },
-        "plan": plan_id
+        "plan": plan_id,
+        "request": f"Automated subscription for app {application_id} on plan {plan_id}"
     }
-    url = f"{gravitee_url}/apis/{api_id}/subscriptions"
-    response = session.post(url, json=data)
+    url = f"{gravitee_url}/applications/{application_id}/subscriptions"
+
+    # Explicitly override headers with content-type for this request
+    headers_override = {
+        "Authorization": f"Bearer {admin_token}",
+        "Content-Type": "application/json"
+    }
+
+    print(f"Creating subscription with payload: {data}")
+    response = requests.post(url, headers=headers_override, json=data)
     print(f"Subscription request response status: {response.status_code}, body: {response.text}")
     response.raise_for_status()
     print(f"Subscription created successfully for application ID {application_id}.")
     return response.json()
+
+
 
 def get_subscription_api_key(subscription_id):
     response = session.get(f"{gravitee_url}/subscriptions/{subscription_id}/apikeys")
@@ -87,9 +92,10 @@ def process_application(i, api_id):
 
         logging.info(f"Creating v4 plan for application: {app_name}")
         plan_id = create_v4_plan(api_id, i)
-
+        print(f"App ID: {application['id']}, Plan ID: {plan_id}")
         logging.info(f"Creating subscription for application ID: {application['id']} with plan ID: {plan_id}")
         subscription = create_subscription_v4(api_id, application["id"], plan_id)
+
 
         time.sleep(1)  # Wait briefly to ensure API key creation
 
