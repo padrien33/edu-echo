@@ -1,16 +1,17 @@
 import requests
 import logging
 import time
+import os
 from requests.adapters import HTTPAdapter, Retry
 from concurrent.futures import ThreadPoolExecutor
 
 # Configure logging
 logging.basicConfig(filename='app_creation.log', level=logging.INFO)
 
-# Configure these variables
-gravitee_url = "https://your-gravitee-instance/api"
-admin_token = "YOUR_ADMIN_TOKEN"
-api_name = "edu-echo"
+# Retrieve configuration from environment variables
+gravitee_url = os.getenv("GRAVITEE_URL")
+admin_token = os.getenv("ADMIN_TOKEN")
+api_name = os.getenv("API_NAME")
 
 headers = {
     "Authorization": f"Bearer {admin_token}",
