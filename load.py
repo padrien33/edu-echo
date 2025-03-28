@@ -29,23 +29,16 @@ def create_application(app_name):
     print(f"Application {app_name} created successfully.")
     return response.json()
 
-def create_v4_plan(api_id, app_number):
-    plan_name = f"Plan-App-{app_number}"
-    payload = {
-        "name": plan_name,
-        "description": f"Plan for app {app_number}",
-        "definitionVersion": "4.0.0",
-        "mode": "STANDARD",
-        "status": "PUBLISHED",
-        "security": "API_KEY",
-        "flows": [],
-        "tags": []
-    }
-    url = f"{gravitee_url}/apis/{api_id}/plans"
-    response = session.post(url, json=payload)
-    print(f"Plan creation response: {response.status_code}, {response.text}")
+def get_existing_plan_id(api_id, plan_name):
+    url = f"http://localhost:8083/management/v2/organizations/DEFAULT/environments/DEFAULT/apis/{api_id}/plans"
+    response = session.get(url)
+    print(f"Fetching plans response: {response.status_code}, {response.text}")
     response.raise_for_status()
-    return response.json()["id"]
+    plans = response.json().get("data", [])
+    for plan in plans:
+        if isinstance(plan, dict) and plan.get("name") == plan_name:
+            return plan["id"]
+    raise Exception(f"Plan named '{plan_name}' not found for API {api_id}.")
 
 def create_subscription_v4(api_id, application_id, plan_id):
     data = {
@@ -81,23 +74,21 @@ def get_subscription_api_key(api_id, subscription_id):
 def perform_request_with_apikey(api_key):
     api_endpoint = "http://localhost:8082/echo"  # Replace with your actual gateway endpoint
     headers = {"X-Gravitee-Api-Key": api_key}
-    response = session.get(api_endpoint, headers=headers)
+    response = requests.get(api_endpoint, headers=headers)
+    print(f"Test call response: {response.status_code}, {response.text}")
     response.raise_for_status()
     return response
 
-def process_application(i, api_id):
+def process_application(i, api_id, plan_id):
     try:
         app_name = f"AutomatedApp-{i}"
         logging.info(f"Creating application: {app_name}")
         application = create_application(app_name)
 
-        logging.info(f"Creating v4 plan for application: {app_name}")
-        plan_id = create_v4_plan(api_id, i)
-
-        logging.info(f"App ID: {application['id']}, Plan ID: {plan_id}")
+        logging.info(f"App ID: {application['id']}, Using Plan ID: {plan_id}")
         subscription = create_subscription_v4(api_id, application["id"], plan_id)
 
-        time.sleep(1)  # Wait briefly to ensure API key creation
+        time.sleep(2)  # Wait to ensure key is available
 
         api_key = get_subscription_api_key(api_id, subscription['id'])
         logging.info(f"Retrieved API Key: {api_key}")
@@ -115,10 +106,12 @@ def process_application(i, api_id):
 
 # Main script execution
 if __name__ == "__main__":
-    api_id = "fe743d3b-0ae1-40c7-b43d-3b0ae1b0c716"  # Replace this with your actual v4 API ID
+    api_id = "fe743d3b-0ae1-40c7-b43d-3b0ae1b0c716"  # Replace with your actual v4 API ID
+    plan_name = "edu_nat"
+    plan_id = get_existing_plan_id(api_id, plan_name)
 
     start_from = 1
     total_apps_to_create = 3
     with ThreadPoolExecutor(max_workers=4) as executor:
-        executor.map(lambda i: process_application(i, api_id),
+        executor.map(lambda i: process_application(i, api_id, plan_id),
                      range(start_from, start_from + total_apps_to_create))
