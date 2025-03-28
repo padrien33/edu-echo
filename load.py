@@ -37,7 +37,7 @@ def create_v4_plan(api_id, app_number):
         "definitionVersion": "4.0.0",
         "mode": "STANDARD",
         "status": "PUBLISHED",
-        "security": "API_KEY",  # ✅ fix here
+        "security": "API_KEY",
         "flows": [],
         "tags": []
     }
@@ -49,12 +49,13 @@ def create_v4_plan(api_id, app_number):
 
 def create_subscription_v4(api_id, application_id, plan_id):
     data = {
-        "plan": plan_id,
+        "applicationId": application_id,
+        "planId": plan_id,
         "request": f"Automated subscription for app {application_id} on plan {plan_id}"
     }
-    url = f"{gravitee_url}/applications/{application_id}/subscriptions"
+    base_url = "http://localhost:8083/management/v2/organizations/DEFAULT/environments/DEFAULT"
+    url = f"{base_url}/apis/{api_id}/subscriptions"
 
-    # Explicitly override headers with content-type for this request
     headers_override = {
         "Authorization": f"Bearer {admin_token}",
         "Content-Type": "application/json"
@@ -64,16 +65,16 @@ def create_subscription_v4(api_id, application_id, plan_id):
     response = requests.post(url, headers=headers_override, json=data)
     print(f"Subscription request response status: {response.status_code}, body: {response.text}")
     response.raise_for_status()
-    print(f"Subscription created successfully for application ID {application_id}.")
+    print(f"✅ Subscription created successfully for application ID {application_id}.")
     return response.json()
 
-
-
-def get_subscription_api_key(subscription_id):
-    response = session.get(f"{gravitee_url}/subscriptions/{subscription_id}/apikeys")
+def get_subscription_api_key(api_id, subscription_id):
+    url = f"http://localhost:8083/management/organizations/DEFAULT/environments/DEFAULT/apis/{api_id}/subscriptions/{subscription_id}/apikeys"
+    response = session.get(url)
+    print(f"API key fetch response: {response.status_code}, {response.text}")
     response.raise_for_status()
     api_keys = response.json()
-    if api_keys:
+    if api_keys and isinstance(api_keys, list):
         return api_keys[0]['key']
     raise Exception(f"No API key found for subscription {subscription_id}")
 
@@ -92,14 +93,13 @@ def process_application(i, api_id):
 
         logging.info(f"Creating v4 plan for application: {app_name}")
         plan_id = create_v4_plan(api_id, i)
-        print(f"App ID: {application['id']}, Plan ID: {plan_id}")
-        logging.info(f"Creating subscription for application ID: {application['id']} with plan ID: {plan_id}")
-        subscription = create_subscription_v4(api_id, application["id"], plan_id)
 
+        logging.info(f"App ID: {application['id']}, Plan ID: {plan_id}")
+        subscription = create_subscription_v4(api_id, application["id"], plan_id)
 
         time.sleep(1)  # Wait briefly to ensure API key creation
 
-        api_key = get_subscription_api_key(subscription['id'])
+        api_key = get_subscription_api_key(api_id, subscription['id'])
         logging.info(f"Retrieved API Key: {api_key}")
 
         api_response = perform_request_with_apikey(api_key)
@@ -114,11 +114,11 @@ def process_application(i, api_id):
         print(f"Error at application {i}: {e}")
 
 # Main script execution
-api_id = "fe743d3b-0ae1-40c7-b43d-3b0ae1b0c716"  # Replace this with your actual v4 API ID
+if __name__ == "__main__":
+    api_id = "fe743d3b-0ae1-40c7-b43d-3b0ae1b0c716"  # Replace this with your actual v4 API ID
 
-start_from = 1  # Adjust this based on your last created application number
-total_apps_to_create = 2
-
-with ThreadPoolExecutor(max_workers=4) as executor:
-    executor.map(lambda i: process_application(i, api_id),
-                 range(start_from, start_from + total_apps_to_create))
+    start_from = 1
+    total_apps_to_create = 3
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        executor.map(lambda i: process_application(i, api_id),
+                     range(start_from, start_from + total_apps_to_create))
