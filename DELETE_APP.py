@@ -1,109 +1,118 @@
 import os
 import requests
 
-# Retrieve configuration from environment variables.
+# Config
 gravitee_url = os.getenv("GRAVITEE_URL")
 gravitee_api_url = os.getenv("GRAVITEE_API_URL", "http://localhost:8083/management/v2/organizations/DEFAULT/environments/DEFAULT")
 admin_token = os.getenv("ADMIN_TOKEN")
 
 if not gravitee_url or not admin_token:
-    print("Error: GRAVITEE_URL and/or ADMIN_TOKEN environment variables are not set.")
+    print("❌ GRAVITEE_URL or ADMIN_TOKEN not set.")
     exit(1)
 
-# Remove trailing slashes.
 BASE_URL = gravitee_url.rstrip("/")
 API_BASE_URL = gravitee_api_url.rstrip("/")
-
-# Hard-coded API ID for which the plans belong.
 API_ID = "fe743d3b-0ae1-40c7-b43d-3b0ae1b0c716"
 
-# Headers for authentication.
 headers = {
     "Authorization": f"Bearer {admin_token}",
     "Content-Type": "application/json"
 }
 
-# ----- APPLICATION FUNCTIONS (v1) -----
+# --- APPLICATIONS ---
 def get_all_applications():
-    """Retrieve all applications from the v1 endpoint."""
     url = f"{BASE_URL}/applications"
-    print(f"Fetching applications from: {url}")
+    print(f"📥 Fetching applications: {url}")
     response = requests.get(url, headers=headers)
-    if response.status_code == 200:
-        return response.json()
-    else:
-        print(f"Error fetching applications: Status {response.status_code} - {response.text}")
-        return []
+    return response.json() if response.status_code == 200 else []
 
-def delete_application(app_id, app_name):
-    """Delete an application by its ID."""
+def delete_application(app_id, name):
     url = f"{BASE_URL}/applications/{app_id}"
-    print(f"Deleting application {app_name} (ID: {app_id}) at: {url}")
-    response = requests.delete(url, headers=headers)
-    if response.status_code == 204:
-        print(f"Deleted application {app_name} successfully.")
+    print(f"🗑️ Deleting application {name} (ID: {app_id})")
+    res = requests.delete(url, headers=headers)
+    if res.status_code == 204:
+        print(f"✅ Deleted application {name}")
     else:
-        print(f"Error deleting application {app_name}: {response.status_code} - {response.text}")
+        print(f"❌ Failed to delete application {name}: {res.status_code} - {res.text}")
 
-# ----- PLAN FUNCTIONS (v2) -----
+# --- PLANS ---
 def get_plans_for_api(api_id):
-    """Retrieve all plans for a specific API using the v2 endpoint."""
     url = f"{API_BASE_URL}/apis/{api_id}/plans"
-    print(f"Fetching plans for API {api_id} from: {url}")
-    response = requests.get(url, headers=headers)
-    if response.status_code == 200:
-        result = response.json()
-        # Extract the list of plans from the 'data' key if present.
-        if isinstance(result, dict) and "data" in result:
-            return result["data"]
-        else:
-            return result
+    print(f"📥 Fetching plans: {url}")
+    res = requests.get(url, headers=headers)
+    if res.status_code == 200:
+        data = res.json()
+        return data.get("data", data)
     else:
-        print(f"Error fetching plans for API {api_id}: Status {response.status_code} - {response.text}")
+        print(f"❌ Failed to fetch plans: {res.status_code} - {res.text}")
         return []
 
-def delete_plan(api_id, plan_id, plan_name):
-    """Delete a plan by its ID from a given API using the v2 endpoint."""
+def delete_plan(api_id, plan_id, name):
     url = f"{API_BASE_URL}/apis/{api_id}/plans/{plan_id}"
-    print(f"Deleting plan {plan_name} (ID: {plan_id}) from API {api_id} at: {url}")
-    response = requests.delete(url, headers=headers)
-    if response.status_code == 204:
-        print(f"Deleted plan {plan_name} successfully.")
+    print(f"🗑️ Deleting plan {name} (ID: {plan_id})")
+    res = requests.delete(url, headers=headers)
+    if res.status_code == 204:
+        print(f"✅ Deleted plan {name}")
     else:
-        print(f"Error deleting plan {plan_name}: {response.status_code} - {response.text}")
+        print(f"❌ Failed to delete plan {name}: {res.status_code} - {res.text}")
 
-# ----- MAIN FUNCTION -----
+# --- SUBSCRIPTIONS ---
+def get_all_subscriptions():
+    url = f"{BASE_URL}/subscriptions"
+    print(f"📥 Fetching subscriptions: {url}")
+    res = requests.get(url, headers=headers)
+    if res.status_code == 200:
+        data = res.json()
+        return data.get("data", data)
+    else:
+        print(f"❌ Failed to fetch subscriptions: {res.status_code} - {res.text}")
+        return []
+
+def delete_subscription(app_id, sub_id):
+    url = f"{BASE_URL}/applications/{app_id}/subscriptions/{sub_id}"
+    print(f"🗑️ Deleting subscription {sub_id} (app: {app_id})")
+    res = requests.delete(url, headers=headers)
+    if res.status_code == 204:
+        print(f"✅ Deleted subscription {sub_id}")
+    else:
+        print(f"❌ Failed to delete subscription {sub_id}: {res.status_code} - {res.text}")
+
+# --- MAIN ---
 def main():
-    # Define target names.
-    target_app_names = {f"AutomatedApp-{i}" for i in range(1, 11)}
-    target_plan_names = {f"Plan-App-{i}" for i in range(1, 11)}
+    target_app_names = {f"AutomatedApp-{i}" for i in range(1, 101)}
+    target_plan_names = {f"Plan-App-{i}" for i in range(1, 101)}
 
-    # Delete applications.
+    # 1. Delete Applications
     apps = get_all_applications()
-    if apps:
-        for app in apps:
-            name = app.get("name", "")
-            if name in target_app_names:
-                app_id = app.get("id")
-                delete_application(app_id, name)
-            else:
-                print(f"Skipping application {name}.")
-    else:
-        print("No applications found or an error occurred fetching applications.")
-
-    # Delete plans for the specified API.
-    plans = get_plans_for_api(API_ID)
-    if not plans:
-        print(f"No plans found for API {API_ID}.")
-        return
-
-    for plan in plans:
-        plan_name = plan.get("name", "")
-        if plan_name in target_plan_names:
-            plan_id = plan.get("id")
-            delete_plan(API_ID, plan_id, plan_name)
+    for app in apps:
+        name = app.get("name")
+        if name in target_app_names:
+            delete_application(app.get("id"), name)
         else:
-            print(f"Skipping plan {plan_name}.")
+            print(f"⏭️ Skipping application {name}")
+
+    # 2. Delete Plans and collect plan IDs
+    plans = get_plans_for_api(API_ID)
+    target_plan_ids = set()
+    for plan in plans:
+        name = plan.get("name")
+        pid = plan.get("id")
+        if name in target_plan_names:
+            delete_plan(API_ID, pid, name)
+            target_plan_ids.add(pid)
+        else:
+            print(f"⏭️ Skipping plan {name}")
+
+    # 3. Delete Subscriptions for the deleted plan IDs
+    if target_plan_ids:
+        subs = get_all_subscriptions()
+        for sub in subs:
+            if sub.get("plan") in target_plan_ids:
+                delete_subscription(sub.get("application"), sub.get("id"))
+            else:
+                print(f"⏭️ Skipping subscription {sub.get('id')} (plan: {sub.get('plan')})")
+    else:
+        print("⚠️ No target plan IDs collected — skipping subscriptions.")
 
 if __name__ == "__main__":
     main()

@@ -4,9 +4,12 @@ import time
 import os
 from requests.adapters import HTTPAdapter, Retry
 from concurrent.futures import ThreadPoolExecutor
+from tqdm import tqdm
+from logging.handlers import RotatingFileHandler
 
-# Configure logging
-logging.basicConfig(filename='app_creation.log', level=logging.INFO)
+# Configure rotating log handler
+log_handler = RotatingFileHandler('app_creation.log', maxBytes=1000000, backupCount=5)
+logging.basicConfig(handlers=[log_handler], level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Retrieve configuration from environment variables
 gravitee_url = os.getenv("GRAVITEE_URL")
@@ -18,7 +21,7 @@ headers = {
 }
 
 session = requests.Session()
-retries = Retry(total=5, backoff_factor=0.5, status_forcelist=[429, 500, 502, 503, 504])
+retries = Retry(total=15, backoff_factor=0.5, status_forcelist=[429, 500, 502, 503, 504])
 session.mount('https://', HTTPAdapter(max_retries=retries))
 session.headers.update(headers)
 
@@ -26,13 +29,11 @@ def create_application(app_name):
     data = {"name": app_name, "description": f"Automated app {app_name}", "type": "SIMPLE"}
     response = session.post(f"{gravitee_url}/applications", json=data)
     response.raise_for_status()
-    print(f"Application {app_name} created successfully.")
     return response.json()
 
 def get_existing_plan_id(api_id, plan_name):
     url = f"http://localhost:8083/management/v2/organizations/DEFAULT/environments/DEFAULT/apis/{api_id}/plans"
     response = session.get(url)
-    print(f"Fetching plans response: {response.status_code}, {response.text}")
     response.raise_for_status()
     plans = response.json().get("data", [])
     for plan in plans:
@@ -54,64 +55,70 @@ def create_subscription_v4(api_id, application_id, plan_id):
         "Content-Type": "application/json"
     }
 
-    print(f"Creating subscription with payload: {data}")
     response = requests.post(url, headers=headers_override, json=data)
-    print(f"Subscription request response status: {response.status_code}, body: {response.text}")
     response.raise_for_status()
-    print(f"✅ Subscription created successfully for application ID {application_id}.")
     return response.json()
 
 def get_subscription_api_key(api_id, subscription_id):
     url = f"http://localhost:8083/management/organizations/DEFAULT/environments/DEFAULT/apis/{api_id}/subscriptions/{subscription_id}/apikeys"
     response = session.get(url)
-    print(f"API key fetch response: {response.status_code}, {response.text}")
     response.raise_for_status()
     api_keys = response.json()
     if api_keys and isinstance(api_keys, list):
         return api_keys[0]['key']
     raise Exception(f"No API key found for subscription {subscription_id}")
 
-def perform_request_with_apikey(api_key):
-    api_endpoint = "http://localhost:8082/echo"  # Replace with your actual gateway endpoint
-    headers = {"X-Gravitee-Api-Key": api_key}
-    response = requests.get(api_endpoint, headers=headers)
-    print(f"Test call response: {response.status_code}, {response.text}")
-    response.raise_for_status()
-    return response
+def perform_request_with_apikey(api_key, index):
+    api_endpoint = "http://localhost:8082/echo"
+    headers = {
+        "Content-Type": "application/json",
+        "X-Gravitee-Api-Key": api_key
+    }
+    print(f"🔐 Using API key: {api_key}")
 
-def process_application(i, api_id, plan_id):
+    for attempt in range(20):
+        try:
+            response = requests.get(api_endpoint, headers=headers)
+            response.raise_for_status()
+            print(f"✅ Test Call{index} successful")
+            return response
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 401 and attempt < 19:
+                print(f"⚠️ Test Call{index} failed with 401, retrying ({attempt+1}/20)...")
+                time.sleep(1)
+            else:
+                raise
+
+def process_application(i, api_id, plan_id, progress_bar):
     try:
         app_name = f"AutomatedApp-{i}"
-        logging.info(f"Creating application: {app_name}")
         application = create_application(app_name)
+        print(f"✅ App{i} created successfully")
 
-        logging.info(f"App ID: {application['id']}, Using Plan ID: {plan_id}")
         subscription = create_subscription_v4(api_id, application["id"], plan_id)
+        print(f"✅ Subscription{i} created successfully")
 
-        time.sleep(2)  # Wait to ensure key is available
+        time.sleep(1)  # Increased wait to 1s
 
         api_key = get_subscription_api_key(api_id, subscription['id'])
-        logging.info(f"Retrieved API Key: {api_key}")
-
-        api_response = perform_request_with_apikey(api_key)
-        logging.info(f"API request response for {app_name}: {api_response.status_code}")
-        print(f"Application {app_name} created and API call successful.")
-
-        if i % 10 == 0:
-            logging.info(f"Progress: {i} applications processed.")
+        perform_request_with_apikey(api_key, i)
 
     except Exception as e:
-        logging.error(f"Error at application {i}: {e}")
-        print(f"Error at application {i}: {e}")
+        print(f"❌ Error at application {i}: {e}")
+        logging.error(f"Application {i} failed: {e}")
+    finally:
+        progress_bar.update(1)
 
 # Main script execution
 if __name__ == "__main__":
-    api_id = "fe743d3b-0ae1-40c7-b43d-3b0ae1b0c716"  # Replace with your actual v4 API ID
+    api_id = "fe743d3b-0ae1-40c7-b43d-3b0ae1b0c716"
     plan_name = "edu_nat"
     plan_id = get_existing_plan_id(api_id, plan_name)
 
     start_from = 1
-    total_apps_to_create = 3
-    with ThreadPoolExecutor(max_workers=4) as executor:
-        executor.map(lambda i: process_application(i, api_id, plan_id),
-                     range(start_from, start_from + total_apps_to_create))
+    total_apps_to_create = 100
+
+    with tqdm(total=total_apps_to_create, desc="Progress", unit="app") as progress_bar:
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            for i in range(start_from, start_from + total_apps_to_create):
+                executor.submit(process_application, i, api_id, plan_id, progress_bar)
