@@ -7,6 +7,10 @@ from concurrent.futures import ThreadPoolExecutor
 from tqdm import tqdm
 from logging.handlers import RotatingFileHandler
 
+#Delete previous log file on every run
+if os.path.exists("app_creation.log"):
+    os.remove("app_creation.log")
+
 # Configure rotating log handler
 log_handler = RotatingFileHandler('app_creation.log', maxBytes=1000000, backupCount=5)
 logging.basicConfig(handlers=[log_handler], level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -50,12 +54,7 @@ def create_subscription_v4(api_id, application_id, plan_id):
     base_url = "http://localhost:8083/management/v2/organizations/DEFAULT/environments/DEFAULT"
     url = f"{base_url}/apis/{api_id}/subscriptions"
 
-    headers_override = {
-        "Authorization": f"Bearer {admin_token}",
-        "Content-Type": "application/json"
-    }
-
-    response = requests.post(url, headers=headers_override, json=data)
+    response = session.post(url, json=data)
     response.raise_for_status()
     return response.json()
 
@@ -98,7 +97,7 @@ def process_application(i, api_id, plan_id, progress_bar):
         subscription = create_subscription_v4(api_id, application["id"], plan_id)
         print(f"✅ Subscription{i} created successfully")
 
-        time.sleep(1)  # Increased wait to 1s
+        time.sleep(1.1)  # Reduced wait to 1s
 
         api_key = get_subscription_api_key(api_id, subscription['id'])
         perform_request_with_apikey(api_key, i)
@@ -115,10 +114,14 @@ if __name__ == "__main__":
     plan_name = "edu_nat"
     plan_id = get_existing_plan_id(api_id, plan_name)
 
-    start_from = 1
-    total_apps_to_create = 10000
+    start_from = 80000
+    total_apps_to_create = 3000
 
     with tqdm(total=total_apps_to_create, desc="Progress", unit="app") as progress_bar:
         with ThreadPoolExecutor(max_workers=4) as executor:
-            for i in range(start_from, start_from + total_apps_to_create):
+            futures = [
                 executor.submit(process_application, i, api_id, plan_id, progress_bar)
+                for i in range(start_from, start_from + total_apps_to_create)
+            ]
+            for f in futures:
+                f.result()

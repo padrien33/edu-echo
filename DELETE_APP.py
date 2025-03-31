@@ -79,8 +79,8 @@ def delete_subscription(app_id, sub_id):
 
 # --- MAIN ---
 def main():
-    target_app_names = {f"AutomatedApp-{i}" for i in range(1, 101)}
-    target_plan_names = {f"Plan-App-{i}" for i in range(1, 101)}
+    target_app_names = {f"AutomatedApp-{i}" for i in range(14000, 50000)}
+    target_plan_names = {f"Plan-App-{i}" for i in range(14000, 50000)}
 
     # 1. Delete Applications
     apps = get_all_applications()
