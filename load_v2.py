@@ -32,32 +32,40 @@ def create_application(app_name):
     return response.json()
 
 def get_existing_plan_id(api_id, plan_name):
-    url = f"http://localhost:8083/management/v2/organizations/DEFAULT/environments/DEFAULT/apis/{api_id}/plans"
+    url = f"http://localhost:8083/management/v1/organizations/DEFAULT/environments/DEFAULT/apis/{api_id}/plans"
     response = session.get(url)
     response.raise_for_status()
-    plans = response.json().get("data", [])
+    plans = response.json()  # This returns a list in v1
     for plan in plans:
         if isinstance(plan, dict) and plan.get("name") == plan_name:
             return plan["id"]
     raise Exception(f"Plan named '{plan_name}' not found for API {api_id}.")
 
-def create_subscription_v4(api_id, application_id, plan_id):
-    data = {
-        "applicationId": application_id,
-        "planId": plan_id,
-        "request": f"Automated subscription for app {application_id} on plan {plan_id}"
-    }
-    base_url = "http://localhost:8083/management/v2/organizations/DEFAULT/environments/DEFAULT"
-    url = f"{base_url}/apis/{api_id}/subscriptions"
+
+def create_subscription_v2(api_id, application_id, plan_id):
+    url = f"http://localhost:8083/management/v1/organizations/DEFAULT/environments/DEFAULT/apis/{api_id}/subscriptions"
 
     headers_override = {
         "Authorization": f"Bearer {admin_token}",
         "Content-Type": "application/json"
     }
 
+    data = {
+        "application": application_id,   # ✅ Correct field name
+        "plan": plan_id,                 # ✅ Correct field name
+        "request": f"Automated subscription for app {application_id}"
+    }
+
     response = requests.post(url, headers=headers_override, json=data)
+
+    if response.status_code >= 400:
+        print(f"❌ Subscription failed: {response.status_code}")
+        print(response.text)
+
     response.raise_for_status()
     return response.json()
+
+
 
 def get_subscription_api_key(api_id, subscription_id):
     url = f"http://localhost:8083/management/organizations/DEFAULT/environments/DEFAULT/apis/{api_id}/subscriptions/{subscription_id}/apikeys"
@@ -69,7 +77,7 @@ def get_subscription_api_key(api_id, subscription_id):
     raise Exception(f"No API key found for subscription {subscription_id}")
 
 def perform_request_with_apikey(api_key, index):
-    api_endpoint = "http://localhost:8082/echo"
+    api_endpoint = "http://localhost:8082/echov2"
     headers = {
         "Content-Type": "application/json",
         "X-Gravitee-Api-Key": api_key
@@ -95,7 +103,7 @@ def process_application(i, api_id, plan_id, progress_bar):
         application = create_application(app_name)
         print(f"✅ App{i} created successfully")
 
-        subscription = create_subscription_v4(api_id, application["id"], plan_id)
+        subscription = create_subscription_v2(api_id, application["id"], plan_id)
         print(f"✅ Subscription{i} created successfully")
 
         time.sleep(1)  # Increased wait to 1s
@@ -111,12 +119,12 @@ def process_application(i, api_id, plan_id, progress_bar):
 
 # Main script execution
 if __name__ == "__main__":
-    api_id = "678345b0-488a-44a1-8345-b0488a34a138"
+    api_id = "88e1120c-6feb-4f4c-a112-0c6febff4c97"
     plan_name = "edu_nat"
     plan_id = get_existing_plan_id(api_id, plan_name)
 
     start_from = 1
-    total_apps_to_create = 40000
+    total_apps_to_create = 2
 
     with tqdm(total=total_apps_to_create, desc="Progress", unit="app") as progress_bar:
         with ThreadPoolExecutor(max_workers=8) as executor:

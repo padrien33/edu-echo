@@ -12,7 +12,7 @@ if not gravitee_url or not admin_token:
 
 BASE_URL = gravitee_url.rstrip("/")
 API_BASE_URL = gravitee_api_url.rstrip("/")
-API_ID = "fe743d3b-0ae1-40c7-b43d-3b0ae1b0c716"
+API_ID = "678345b0-488a-44a1-8345-b0488a34a138"
 
 headers = {
     "Authorization": f"Bearer {admin_token}",
@@ -79,8 +79,8 @@ def delete_subscription(app_id, sub_id):
 
 # --- MAIN ---
 def main():
-    target_app_names = {f"AutomatedApp-{i}" for i in range(14000, 50000)}
-    target_plan_names = {f"Plan-App-{i}" for i in range(14000, 50000)}
+    target_app_names = {f"AutomatedApp-{i}" for i in range(1, 40000)}
+    target_plan_names = {f"Plan-App-{i}" for i in range(1, 40000)}
 
     # 1. Delete Applications
     apps = get_all_applications()
