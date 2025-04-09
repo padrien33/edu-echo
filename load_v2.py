@@ -42,28 +42,26 @@ def get_existing_plan_id(api_id, plan_name):
     raise Exception(f"Plan named '{plan_name}' not found for API {api_id}.")
 
 
+
 def create_subscription_v2(api_id, application_id, plan_id):
-    url = f"http://localhost:8083/management/v1/organizations/DEFAULT/environments/DEFAULT/apis/{api_id}/subscriptions"
-
-    headers_override = {
-        "Authorization": f"Bearer {admin_token}",
-        "Content-Type": "application/json"
-    }
-
+    url = f"http://localhost:8083/management/v2/organizations/DEFAULT/environments/DEFAULT/apis/{api_id}/subscriptions"
     data = {
-        "application": application_id,   # ✅ Correct field name
-        "plan": plan_id,                 # ✅ Correct field name
-        "request": f"Automated subscription for app {application_id}"
+    "applicationId": application_id,
+    "planId": plan_id,
+    "request": f"Automated subscription for app {application_id}"
     }
 
-    response = requests.post(url, headers=headers_override, json=data)
+    print(f"📦 Payload being sent: {data}")
 
-    if response.status_code >= 400:
+    response = requests.post(url, headers=headers, json=data)
+
+    if response.status_code != 201:
         print(f"❌ Subscription failed: {response.status_code}")
         print(response.text)
+        response.raise_for_status()
 
-    response.raise_for_status()
     return response.json()
+
 
 
 
@@ -101,13 +99,13 @@ def process_application(i, api_id, plan_id, progress_bar):
     try:
         app_name = f"AutomatedApp-{i}"
         application = create_application(app_name)
-        print(f"✅ App{i} created successfully")
+        print(f"✅ App{i} created successfully with ID: {application['id']}")
+        time.sleep(1)
 
         subscription = create_subscription_v2(api_id, application["id"], plan_id)
         print(f"✅ Subscription{i} created successfully")
-
         time.sleep(1)  # Increased wait to 1s
-
+        # 🔑 Get the key and test it
         api_key = get_subscription_api_key(api_id, subscription['id'])
         perform_request_with_apikey(api_key, i)
 
@@ -117,14 +115,16 @@ def process_application(i, api_id, plan_id, progress_bar):
     finally:
         progress_bar.update(1)
 
+
+
 # Main script execution
 if __name__ == "__main__":
     api_id = "88e1120c-6feb-4f4c-a112-0c6febff4c97"
     plan_name = "edu_nat"
     plan_id = get_existing_plan_id(api_id, plan_name)
-
+    print(f"✅ Plan ID found: {plan_id}")
     start_from = 1
-    total_apps_to_create = 2
+    total_apps_to_create = 40000
 
     with tqdm(total=total_apps_to_create, desc="Progress", unit="app") as progress_bar:
         with ThreadPoolExecutor(max_workers=8) as executor:
