@@ -1,20 +1,20 @@
 import os
 import requests
 
-# Load environment variables
-gravitee_url = os.getenv("GRAVITEE_URL")  # Should be: http://localhost:8083/management/organizations/DEFAULT/environments/DEFAULT
+# === CONFIGURATION ===
+gravitee_url = os.getenv("GRAVITEE_URL")  # e.g. http://localhost:8083/management/organizations/DEFAULT/environments/DEFAULT
 admin_token = os.getenv("ADMIN_TOKEN")
-group_id = "your-group-id"  # <-- Replace with the actual group ID
+group_id = "3b8f5901-4d8c-4df9-8f59-014d8c2df9e6"  # <-- Replace with your actual group ID
+app_prefix = "AutomatedApp-"  # Only assign apps with this prefix
 
-# App name pattern to filter
-APP_PREFIX = "AutomatedApp-"
-
-# Headers
+# === HEADERS ===
 headers = {
     "Authorization": f"Bearer {admin_token}",
     "Accept": "application/json",
     "Content-Type": "application/json"
 }
+
+# === FUNCTIONS ===
 
 def fetch_applications():
     print("📥 Fetching applications...")
@@ -25,27 +25,37 @@ def fetch_applications():
         print(f"❌ Failed to fetch applications: {response.status_code} - {response.text}")
         return {}
 
-    apps = response.json()  # It's a list, not an object
-    print(f"✅ Retrieved {len(apps)} total applications")
-
-    filtered = {app["name"]: app["id"] for app in apps if app["name"].startswith(APP_PREFIX)}
-    print(f"🔎 Found {len(filtered)} apps matching prefix '{APP_PREFIX}'")
+    apps = response.json()
+    filtered = {app["name"]: app["id"] for app in apps if app["name"].startswith(app_prefix)}
+    print(f"🔎 Found {len(filtered)} apps starting with '{app_prefix}'")
     return filtered
 
-def assign_group(app_ids):
-    print(f"🔗 Assigning group '{group_id}' to applications...")
-    for name, app_id in app_ids.items():
-        url = f"{gravitee_url}/applications/{app_id}/groups"
-        response = requests.post(url, headers=headers, json=[group_id])
-        if response.status_code in (200, 204):
-            print(f"✅ Assigned group to {name}")
-        else:
-            print(f"❌ Failed to assign group to {name} ({app_id}): {response.status_code} - {response.text}")
-
-# Run the script
-if __name__ == "__main__":
-    app_ids = fetch_applications()
-    if app_ids:
-        assign_group(app_ids)
+def assign_app_to_group(app_id, app_name):
+    url = f"{gravitee_url}/configuration/groups/{group_id}/memberships"
+    payload = {
+        "memberId": app_id,
+        "memberType": "APPLICATION",
+        "role": "APPLICATION:USER"
+    }
+    response = requests.post(url, headers=headers, json=payload)
+    if response.status_code in (200, 201, 204):
+        print(f"✅ Assigned {app_name} to group '{group_id}'")
     else:
-        print("⚠️ No applications to process.")
+        print(f"❌ Failed to assign {app_name} ({app_id}): {response.status_code} - {response.text}")
+
+
+# === MAIN EXECUTION ===
+
+if not gravitee_url or not admin_token:
+    print("❗ GRAVITEE_URL or ADMIN_TOKEN is not set.")
+    exit(1)
+
+app_ids = fetch_applications()
+if not app_ids:
+    print("⚠️ No applications matched. Exiting.")
+    exit(0)
+
+print(f"🔗 Assigning applications to group: {group_id}")
+for name, app_id in app_ids.items():
+    assign_app_to_group(app_id, name)
+
