@@ -114,11 +114,11 @@ if __name__ == "__main__":
     plan_name = "edu_nat"
     plan_id = get_existing_plan_id(api_id, plan_name)
 
-    start_from = 80000
-    total_apps_to_create = 3000
+    start_from = 1
+    total_apps_to_create = 40000
 
     with tqdm(total=total_apps_to_create, desc="Progress", unit="app") as progress_bar:
-        with ThreadPoolExecutor(max_workers=4) as executor:
+        with ThreadPoolExecutor(max_workers=8) as executor:
             futures = [
                 executor.submit(process_application, i, api_id, plan_id, progress_bar)
                 for i in range(start_from, start_from + total_apps_to_create)
